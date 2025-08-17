@@ -129,21 +129,21 @@ export class ModelProviderLauncher {
     try {
       const claudeSettingsPath = path.join(os.homedir(), '.claude', 'settings.json');
       const claudeBackupPath = path.join(os.homedir(), '.claude', 'settings.backup.json');
-      
+
       this.debug(`Backing up Claude settings`);
       this.debug(`Claude settings path: ${claudeSettingsPath}`);
       this.debug(`Claude backup path: ${claudeBackupPath}`);
       this.debug(`Input config:`, config);
-      
+
       // 确保.claude目录存在
       await fs.ensureDir(path.dirname(claudeSettingsPath));
-      
+
       // 备份原始配置文件（如果存在）
       if (await fs.pathExists(claudeSettingsPath)) {
         await fs.copy(claudeSettingsPath, claudeBackupPath);
         this.debug(`Backed up existing Claude settings`);
       }
-      
+
       // 读取现有配置（如果存在）
       let existingConfig: any = {
         env: {},
@@ -151,7 +151,7 @@ export class ModelProviderLauncher {
           allow: ["WebFetch"]
         }
       };
-      
+
       if (await fs.pathExists(claudeSettingsPath)) {
         try {
           existingConfig = await fs.readJson(claudeSettingsPath);
@@ -161,17 +161,37 @@ export class ModelProviderLauncher {
           console.log(chalk.yellow('⚠️  现有Claude配置文件格式有误，将使用默认配置'));
         }
       }
-      
+
       // 更新环境变量 - 只保留providers.json中存在且有值的字段
       if (!existingConfig.env) {
         existingConfig.env = {};
       }
-      
-      // 清理旧的Anthropic相关环境变量
-      this.debug(`Cleaning existing Anthropic environment variables`);
-      delete existingConfig.env.ANTHROPIC_BASE_URL;
-      delete existingConfig.env.ANTHROPIC_AUTH_TOKEN;
-      
+
+      // 定义当前供应商支持的环境变量
+      const supportedEnvVars: string[] = [];
+
+      // 根据配置添加支持的环境变量
+      if (config.baseUrl !== undefined) {
+        supportedEnvVars.push('ANTHROPIC_BASE_URL');
+      }
+
+      if (config.auth_token !== undefined) {
+        supportedEnvVars.push('ANTHROPIC_AUTH_TOKEN');
+      }
+
+      if (config.apiKey !== undefined) {
+        supportedEnvVars.push('ANTHROPIC_API_KEY');
+      }
+
+      // 清理不在支持列表中的环境变量
+      this.debug(`Cleaning environment variables, keeping only: ${supportedEnvVars.join(', ')}`);
+      Object.keys(existingConfig.env).forEach(key => {
+        if (!supportedEnvVars.includes(key)) {
+          this.debug(`Removing unsupported environment variable: ${key}`);
+          delete existingConfig.env[key];
+        }
+      });
+
       // 只设置providers.json中存在且有值的字段
       if (config.baseUrl && config.baseUrl.trim() !== '') {
         this.debug(`Setting ANTHROPIC_BASE_URL to: ${config.baseUrl}`);
@@ -179,29 +199,25 @@ export class ModelProviderLauncher {
       } else {
         this.debug(`Skipping ANTHROPIC_BASE_URL (not provided or empty)`);
       }
-      
-      // 优先使用 auth_token，如果不存在或为空则使用 apiKey
-      let authToken = '';
-      if (config.auth_token && config.auth_token.trim() !== '') {
-        authToken = config.auth_token;
-        this.debug(`Using auth_token for ANTHROPIC_AUTH_TOKEN: ${authToken}`);
-      } else if (config.apiKey && config.apiKey.trim() !== '') {
-        authToken = config.apiKey;
-        this.debug(`Using apiKey for ANTHROPIC_AUTH_TOKEN (auth_token not available)`);
+
+      // 设置 auth_token（即使为空字符串也要设置）
+      if (config.auth_token !== undefined) {
+        existingConfig.env.ANTHROPIC_AUTH_TOKEN = config.auth_token;
+        this.debug(`Setting ANTHROPIC_AUTH_TOKEN to: ${config.auth_token}`);
       }
-      
-      if (authToken) {
-        existingConfig.env.ANTHROPIC_AUTH_TOKEN = authToken;
-      } else {
-        this.debug(`Skipping ANTHROPIC_AUTH_TOKEN (no valid token provided)`);
+
+      // 设置 apiKey（即使为空字符串也要设置）
+      if (config.apiKey !== undefined) {
+        existingConfig.env.ANTHROPIC_API_KEY = config.apiKey;
+        this.debug(`Setting ANTHROPIC_API_KEY to: ${config.apiKey}`);
       }
-      
+
       this.debug(`Final Claude config:`, existingConfig);
-      
+
       // 写入更新后的配置
       await fs.writeJson(claudeSettingsPath, existingConfig, { spaces: 2 });
       this.debug(`Claude settings written successfully`);
-      
+
       return true;
     } catch (error) {
       this.debug(`Error in backupClaudeSettings:`, error);
@@ -230,13 +246,13 @@ export class ModelProviderLauncher {
   async initializeProvidersConfig(): Promise<void> {
     try {
       const configDir = path.dirname(this.providersConfigPath);
-      
+
       // 确保配置目录存在
       if (!(await fs.pathExists(configDir))) {
         await fs.ensureDir(configDir);
         // console.log(chalk.blue(`📁 已创建配置目录: ${configDir}`));
       }
-      
+
       // 如果配置文件不存在，从项目目录复制默认配置
       if (!(await fs.pathExists(this.providersConfigPath))) {
         const defaultConfigPath = path.join(__dirname, '..', 'config', 'providers.json');
@@ -261,13 +277,13 @@ export class ModelProviderLauncher {
     try {
       this.debug(`Loading provider config for: ${providerName}`);
       this.debug(`Providers config path: ${this.providersConfigPath}`);
-      
+
       // 首先确保配置文件已初始化
       await this.initializeProvidersConfig();
       if (await fs.pathExists(this.providersConfigPath)) {
         const providersConfig = await fs.readJson(this.providersConfigPath);
         this.debug(`Available providers: ${Object.keys(providersConfig).join(', ')}`);
-        
+
         const config = providersConfig[providerName] || null;
         this.debug(`Provider config for ${providerName}:`, config);
         return config;
@@ -286,11 +302,11 @@ export class ModelProviderLauncher {
    */
   validateConfig(config: ModelConfig): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
-    
+
     if (!config.apiKey) {
       errors.push('必须指定API密钥 (--api-key)');
     }
-    
+
     if (!config.baseUrl) {
       errors.push('必须指定基础URL (--base-url)');
     }
@@ -337,18 +353,19 @@ export class ModelProviderLauncher {
       // 生成Claude Code格式的配置
       const claudeConfig: any = {
         env: {
-          ANTHROPIC_AUTH_TOKEN: options.auth_token || options.apiKey,
+          ANTHROPIC_AUTH_TOKEN: options.auth_token,
+          ANTHROPIC_API_KEY: options.apiKey,
           ANTHROPIC_BASE_URL: options.baseUrl
         },
         permissions: {
           allow: ["WebFetch"]
         }
       };
-      
+
       // 如果存在其他非Claude相关的配置，保留它们
       if (existingConfig && typeof existingConfig === 'object') {
         Object.keys(existingConfig).forEach(key => {
-          if (key !== 'env' && key !== 'permissions' && key !== 'provider' && key !== 'model' && key !== 'apiKey' && key !== 'baseUrl') {
+          if (key !== 'env' && key !== 'permissions' && key !== 'provider' && key !== 'model' && key !== 'apiKey' && key !== 'baseUrl' && key !== 'auth_token') {
             claudeConfig[key] = existingConfig[key];
           }
         });
@@ -374,11 +391,11 @@ export class ModelProviderLauncher {
         stdio: 'pipe',
         shell: true  // Windows兼容性修复
       });
-      
+
       process.on('close', (code) => {
         resolve(code === 0);
       });
-      
+
       process.on('error', () => {
         resolve(false);
       });
@@ -391,17 +408,17 @@ export class ModelProviderLauncher {
   async launchClaudeCode(projectPath?: string): Promise<void> {
     try {
       console.log(chalk.blue('🚀 正在启动Claude Code...'));
-      
+
       const args = projectPath ? [projectPath] : [];
       console.log(chalk.yellow('💡 Claude Code将在当前终端中启动...'));
-      
+
       // [todo]: 添加对当前工作空间的支持
       // 使用spawnSync在当前终端中同步运行Claude Code
       const claudeProcess = spawnSync('claude', args, {
         stdio: 'inherit',
         shell: true  // Windows兼容性修复
       });
-      
+
       if (claudeProcess.status !== 0) {
         console.error(chalk.red(`❌ Claude Code退出，状态码: ${claudeProcess.status}`));
       }
@@ -432,48 +449,49 @@ export class ModelProviderLauncher {
   async launch(options: ModelConfig & { projectPath?: string; providerName?: string }): Promise<void> {
     try {
       this.debug('Launch called with options:', options);
-      
+
       console.log(chalk.blue('🔧 Claude Code 快速启动器'));
       console.log(chalk.gray('================================'));
 
       // 1. 处理供应商配置
       const { projectPath, providerName, ...configOptions } = options;
       let finalConfig = { ...configOptions };
-      
+
       if (providerName) {
-         console.log(chalk.blue(`🔍 加载供应商配置: ${providerName}...`));
-         const providerConfig = await this.loadProviderConfig(providerName);
-         if (providerConfig) {
-            finalConfig = {
-              provider: providerName,
-              model: providerConfig.model,
-              apiKey: providerConfig.api_key,
-              baseUrl: providerConfig.base_url,
-              auth_token: providerConfig.auth_token
-            };
-            // 只有当命令行参数存在时才覆盖
-            if (configOptions.apiKey) finalConfig.apiKey = configOptions.apiKey;
-            if (configOptions.baseUrl) finalConfig.baseUrl = configOptions.baseUrl;
-            if (configOptions.model) finalConfig.model = configOptions.model;
+        console.log(chalk.blue(`🔍 加载供应商配置: ${providerName}...`));
+        const providerConfig = await this.loadProviderConfig(providerName);
+        if (providerConfig) {
+          finalConfig = {
+            provider: providerName,
+            model: providerConfig.model,
+            apiKey: providerConfig.api_key,
+            baseUrl: providerConfig.base_url,
+            auth_token: providerConfig.auth_token
+          };
+          // 只有当命令行参数存在时才覆盖
+          if (configOptions.apiKey) finalConfig.apiKey = configOptions.apiKey;
+          if (configOptions.baseUrl) finalConfig.baseUrl = configOptions.baseUrl;
+          if (configOptions.auth_token) finalConfig.auth_token = configOptions.auth_token;
+          if (configOptions.model) finalConfig.model = configOptions.model;
           //  console.log(chalk.green(`✅ 已加载 ${providerConfig.name} 配置`));
         } else {
           console.error(chalk.red(`❌ 未找到供应商配置: ${providerName}`));
           process.exit(1);
         }
       }
-      
+
       // 2. 验证配置参数
       if (Object.keys(finalConfig).length > 0) {
         console.log(chalk.blue('🔍 验证配置参数...'));
-        
+
         // 如果使用供应商配置，只进行基本验证（允许只有部分字段）
-          if (providerName) {
-            if (!finalConfig.apiKey && !finalConfig.auth_token && !finalConfig.baseUrl) {
-              console.error(chalk.red('❌ 配置验证失败:'));
-              console.error(chalk.red('  • 至少需要提供 API密钥、auth_token 或 base_url 中的一个'));
-              process.exit(1);
-            }
-          } else {
+        if (providerName) {
+          if (!finalConfig.apiKey && !finalConfig.auth_token && !finalConfig.baseUrl) {
+            console.error(chalk.red('❌ 配置验证失败:'));
+            console.error(chalk.red('  • 至少需要提供 API密钥、auth_token 或 base_url 中的一个'));
+            process.exit(1);
+          }
+        } else {
           // 使用完整的Claude验证
           const validation = this.validateConfig(finalConfig);
           if (!validation.valid) {
@@ -513,7 +531,7 @@ export class ModelProviderLauncher {
       if (Object.keys(finalConfig).length > 0) {
         await this.backupClaudeSettings(finalConfig);
       }
-      
+
       // 7. 启动Claude Code（跳过如果是测试模式）
       if (!process.env.SKIP_CLAUDE_LAUNCH) {
         // 清空终端日志
@@ -526,11 +544,11 @@ export class ModelProviderLauncher {
 
     } catch (error) {
       console.error(chalk.red('❌ 启动过程中发生错误:'), error);
-      
+
       // 尝试恢复配置
       console.log(chalk.blue('🔄 正在恢复原始配置...'));
       await this.restoreConfig();
-      
+
       process.exit(1);
     }
   }
@@ -543,7 +561,7 @@ const launcher = new ModelProviderLauncher();
 program
   .name('claudex')
   .description('Claude Code 快速启动器 - 支持多供应商配置')
-  .version('2.0.5');
+  .version('2.0.6');
 
 // 全局选项
 program
@@ -561,7 +579,7 @@ program
       process.env.CLAUDEX_DEBUG = 'true';
       launcher.debugMode = true;
     }
-    
+
     // 如果指定了供应商，直接使用供应商配置
     if (options.provider) {
       await launcher.launch({
@@ -572,7 +590,7 @@ program
       });
       return;
     }
-    
+
     // 传统方式：需要手动指定API key
     if (!options.apiKey) {
       console.log(chalk.yellow('💡 使用方式:'));
@@ -589,7 +607,7 @@ program
       console.log(chalk.gray('  claudex --help'));
       return;
     }
-    
+
     // 默认使用Claude配置
     await launcher.launch({
       provider: 'claude',
@@ -607,11 +625,11 @@ program
   .action(async () => {
     console.log(chalk.blue('\n🏢 支持的模型供应商:'));
     console.log(chalk.gray('================================'));
-    
+
     try {
       await launcher.initializeProvidersConfig();
       const configPath = path.join(os.homedir(), '.claudex', 'providers.json');
-      
+
       if (await fs.pathExists(configPath)) {
         const providersConfig = await fs.readJson(configPath);
         Object.keys(providersConfig).forEach(key => {
@@ -626,7 +644,7 @@ program
     } catch (error) {
       console.error(chalk.red('❌ 读取供应商配置失败:'), error);
     }
-    
+
     console.log(chalk.gray('\n使用示例:'));
     console.log(chalk.cyan('claudex -p moonshot'));
     console.log(chalk.cyan('claudex -k your-api-key'));
