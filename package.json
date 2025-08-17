@@ -1,6 +1,6 @@
 {
   "name": "model-router",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "多供应商AI模型启动脚本 - 支持Claude、OpenAI、Google等多个供应商",
   "main": "dist/index.js",
   "bin": {
@@ -10,11 +10,46 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "test": "node test/basic-test.js"
+    "test": "node test/basic-test.js",
+    "test:config": "node test/config-test.js",
+    "test:all": "npm run test && npm run test:config",
+    "debug": "npm run build && node debug/debug.js",
+    "debug:providers": "npm run build && node debug/debug.js test-providers",
+    "debug:mapping": "npm run build && node debug/debug.js test-mapping"
   },
-  "keywords": ["claude", "ai", "launcher", "cli"],
-  "author": "",
+  "keywords": [
+    "claude",
+    "ai",
+    "launcher",
+    "cli",
+    "claude-code",
+    "moonshot",
+    "zhipu",
+    "anthropic",
+    "router",
+    "multi-provider"
+  ],
+  "author": "Claude Router Contributors",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-username/claude-router.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/claude-router/issues"
+  },
+  "homepage": "https://github.com/your-username/claude-router#readme",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=7.0.0"
+  },
+  "files": [
+    "dist/",
+    "config/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "type": "module",
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",

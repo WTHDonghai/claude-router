@@ -1,0 +1,6 @@
+{
+  "partial-provider": {
+    "name": "部分配置测试",
+    "base_url": "https://api.partial.test"
+  }
+}

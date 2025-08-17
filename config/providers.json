@@ -1,12 +1,12 @@
 {
   "moonshot": {
     "name": "月之暗面",
-    "baseUrl": "https://api.moonshot.cn/v1",
-    "apiKey": "your-moonshot-key"
+    "base_url": "https://api.moonshot.cn/v1",
+    "api_key": "your-moonshot-key"
   },
   "zhipu": {
     "name": "智谱",
-    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
-    "apiKey": "your-zhipu-api-key"
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "api_key": "your-zhipu-api-key"
   }
 }
