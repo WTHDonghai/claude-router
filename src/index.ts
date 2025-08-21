@@ -13,25 +13,23 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-interface ModelConfig {
-  provider?: string,
+interface ProviderConfig {
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  authToken?: string;
   model?: string;
-  apiKey?: string;
-  baseUrl?: string;
-  auth_token?: string;
+  smallFastModel?: string;
+}
+
+interface ModelConfig extends Omit<ProviderConfig, 'name'> {
+  provider?: string;
   maxTokens?: number;
   temperature?: number;
   organizationId?: string; // for OpenAI
   projectId?: string; // for Google
   deploymentName?: string; // for Azure
   [key: string]: any;
-}
-
-interface ProviderConfig {
-  name: string;
-  base_url: string;
-  api_key: string;
-  auth_token?: string;
 }
 
 export class ModelProviderLauncher {
@@ -175,12 +173,20 @@ export class ModelProviderLauncher {
         supportedEnvVars.push('ANTHROPIC_BASE_URL');
       }
 
-      if (config.auth_token !== undefined) {
+      if (config.authToken !== undefined) {
         supportedEnvVars.push('ANTHROPIC_AUTH_TOKEN');
       }
 
       if (config.apiKey !== undefined) {
         supportedEnvVars.push('ANTHROPIC_API_KEY');
+      }
+
+      if (config.smallFastModel !== undefined) {
+        supportedEnvVars.push('ANTHROPIC_SMALL_FAST_MODEL');
+      }
+
+      if (config.model !== undefined) {
+        supportedEnvVars.push('ANTHROPIC_MODEL');
       }
 
       // 清理不在支持列表中的环境变量
@@ -200,16 +206,26 @@ export class ModelProviderLauncher {
         this.debug(`Skipping ANTHROPIC_BASE_URL (not provided or empty)`);
       }
 
-      // 设置 auth_token（即使为空字符串也要设置）
-      if (config.auth_token !== undefined) {
-        existingConfig.env.ANTHROPIC_AUTH_TOKEN = config.auth_token;
-        this.debug(`Setting ANTHROPIC_AUTH_TOKEN to: ${config.auth_token}`);
+      // 设置 authToken（即使为空字符串也要设置）
+      if (config.authToken !== undefined) {
+        existingConfig.env.ANTHROPIC_AUTH_TOKEN = config.authToken;
+        this.debug(`Setting ANTHROPIC_AUTH_TOKEN to: ${config.authToken}`);
       }
 
       // 设置 apiKey（即使为空字符串也要设置）
       if (config.apiKey !== undefined) {
         existingConfig.env.ANTHROPIC_API_KEY = config.apiKey;
         this.debug(`Setting ANTHROPIC_API_KEY to: ${config.apiKey}`);
+      }
+
+      if (config.smallFastModel !== undefined) {
+        existingConfig.env.ANTHROPIC_SMALL_FAST_MODEL = config.smallFastModel;
+        this.debug(`Setting ANTHROPIC_SMALL_FAST_MODEL to: ${config.smallFastModel}`);
+      }
+
+      if (config.model !== undefined) {
+        existingConfig.env.ANTHROPIC_MODEL = config.model;
+        this.debug(`Setting ANTHROPIC_MODEL to: ${config.model}`);
       }
 
       this.debug(`Final Claude config:`, existingConfig);
@@ -353,7 +369,7 @@ export class ModelProviderLauncher {
       // 生成Claude Code格式的配置
       const claudeConfig: any = {
         env: {
-          ANTHROPIC_AUTH_TOKEN: options.auth_token,
+          ANTHROPIC_AUTH_TOKEN: options.authToken,
           ANTHROPIC_API_KEY: options.apiKey,
           ANTHROPIC_BASE_URL: options.baseUrl
         },
@@ -365,7 +381,7 @@ export class ModelProviderLauncher {
       // 如果存在其他非Claude相关的配置，保留它们
       if (existingConfig && typeof existingConfig === 'object') {
         Object.keys(existingConfig).forEach(key => {
-          if (key !== 'env' && key !== 'permissions' && key !== 'provider' && key !== 'model' && key !== 'apiKey' && key !== 'baseUrl' && key !== 'auth_token') {
+          if (key !== 'env' && key !== 'permissions' && key !== 'provider' && key !== 'model' && key !== 'apiKey' && key !== 'baseUrl' && key !== 'authToken' && 'smallFastModel' !== key) {
             claudeConfig[key] = existingConfig[key];
           }
         });
@@ -464,15 +480,17 @@ export class ModelProviderLauncher {
           finalConfig = {
             provider: providerName,
             model: providerConfig.model,
-            apiKey: providerConfig.api_key,
-            baseUrl: providerConfig.base_url,
-            auth_token: providerConfig.auth_token
+            smallFastModel: providerConfig.smallFastModel,
+            apiKey: providerConfig.apiKey,
+            baseUrl: providerConfig.baseUrl,
+            authToken: providerConfig.authToken
           };
           // 只有当命令行参数存在时才覆盖
           if (configOptions.apiKey) finalConfig.apiKey = configOptions.apiKey;
           if (configOptions.baseUrl) finalConfig.baseUrl = configOptions.baseUrl;
-          if (configOptions.auth_token) finalConfig.auth_token = configOptions.auth_token;
+          if (configOptions.authToken) finalConfig.authToken = configOptions.authToken;
           if (configOptions.model) finalConfig.model = configOptions.model;
+          if (configOptions.smallFastModel) finalConfig.smallFastModel = configOptions.smallFastModel;
           //  console.log(chalk.green(`✅ 已加载 ${providerConfig.name} 配置`));
         } else {
           console.error(chalk.red(`❌ 未找到供应商配置: ${providerName}`));
@@ -486,7 +504,7 @@ export class ModelProviderLauncher {
 
         // 如果使用供应商配置，只进行基本验证（允许只有部分字段）
         if (providerName) {
-          if (!finalConfig.apiKey && !finalConfig.auth_token && !finalConfig.baseUrl) {
+          if (!finalConfig.apiKey && !finalConfig.authToken && !finalConfig.baseUrl) {
             console.error(chalk.red('❌ 配置验证失败:'));
             console.error(chalk.red('  • 至少需要提供 API密钥、auth_token 或 base_url 中的一个'));
             process.exit(1);
@@ -561,7 +579,7 @@ const launcher = new ModelProviderLauncher();
 program
   .name('claudex')
   .description('Claude Code 快速启动器 - 支持多供应商配置')
-  .version('2.0.6');
+  .version('2.0.7');
 
 // 全局选项
 program
@@ -635,7 +653,7 @@ program
         Object.keys(providersConfig).forEach(key => {
           const provider = providersConfig[key];
           console.log(chalk.green(`\n📍 ${provider.name} (${key})`));
-          console.log(chalk.gray(`   基础URL: ${provider.base_url}`));
+          console.log(chalk.gray(`   基础URL: ${provider.baseUrl}`));
           // console.log(chalk.gray(`   API密钥: ${provider.api_key ? '已配置' : '未配置'}`));
         });
       } else {
